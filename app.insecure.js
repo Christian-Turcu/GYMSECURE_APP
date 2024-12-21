@@ -7,7 +7,7 @@ const app = express();
 const port = 3001; // Different port for insecure version
 
 // Import routes
-const adminRoutes = require('./routes/admin.insecure');
+const adminRoutes = require('./routes/insecure/admin');
 const memberRoutes = require('./routes/member');
 
 // Database setup
@@ -25,9 +25,16 @@ app.use(session({
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.set('view engine', 'ejs');
 
-// VULNERABILITY: No input sanitization
+// Set view engine
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+
+// Routes
+app.use('/admin', adminRoutes);
+app.use('/member', memberRoutes);
+
+// VULNERABILITY: No input validation in login
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
     
@@ -86,10 +93,6 @@ db.serialize(() => {
     
     db.run(adminQuery);
 });
-
-// Use routes
-app.use('/admin', adminRoutes);
-app.use('/member', memberRoutes);
 
 app.listen(port, () => {
     console.log(`Insecure server running at http://localhost:${port}`);

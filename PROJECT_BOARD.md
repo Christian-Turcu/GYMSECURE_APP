@@ -27,6 +27,30 @@
 - Technology stack selection
 - Git repository creation
 - Branch structure setup
+- Repository setup
+- Basic project structure
+- Initial documentation
+- Project planning
+- Requirements analysis
+- Technology stack selection
+- Git repository creation
+- Branch structure setup
+- Authentication system
+- Member dashboard
+- Admin dashboard
+- Basic security features
+- Security implementation
+- Logging system
+- Testing framework
+- Security documentation
+- Vulnerability implementation
+- Testing
+- Documentation completion
+- Code review
+- Final testing
+- Documentation review
+- Project submission
+- Presentation preparation
 
 ## Project Timeline
 

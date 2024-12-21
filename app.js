@@ -1,55 +1,30 @@
 const express = require('express');
 const session = require('express-session');
-const helmet = require('helmet');
-const csrf = require('csurf');
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
-const winston = require('winston');
 const bcrypt = require('bcrypt');
+const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
+const db = new sqlite3.Database('gym.db');
+const helmet = require('helmet');
 
 const app = express();
-const port = 3000;
-
-// Import routes
-const adminRoutes = require('./routes/admin');
-const memberRoutes = require('./routes/member');
-
-// Database setup
-const db = new sqlite3.Database('gym.db');
-
-// Logger setup
-const logger = winston.createLogger({
-    level: 'info',
-    format: winston.format.json(),
-    transports: [
-        new winston.transports.File({ filename: 'error.log', level: 'error' }),
-        new winston.transports.File({ filename: 'combined.log' })
-    ]
-});
 
 // Middleware
-app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.set('view engine', 'ejs');
+app.use(express.static('public'));
 
 // Session configuration
 app.use(session({
     secret: 'your-secret-key',
     resave: false,
-    saveUninitialized: false,
-    cookie: { 
-        secure: false, // Set to true in production with HTTPS
-        httpOnly: true,
-        maxAge: 1000 * 60 * 60 * 24 // 24 hours
-    }
+    saveUninitialized: false
 }));
 
-// Security headers
-app.use(helmet());
+// Set view engine
+app.set('view engine', 'ejs');
 
-// CSRF protection
-app.use(csrf());
+// Security middleware
+app.use(helmet());
 
 // Database initialization
 db.serialize(() => {
@@ -101,68 +76,144 @@ db.serialize(() => {
 
 // Routes
 app.get('/', (req, res) => {
-    res.render('login', { csrfToken: req.csrfToken() });
+    res.render('login', { error: req.query.error });
 });
 
 // Login route
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    
-    db.get('SELECT * FROM users WHERE username = ?', [username], (err, user) => {
-        if (err) {
-            logger.error('Database error during login:', err);
-            return res.redirect('/');
+
+    try {
+        // Check if input is email or username
+        const user = await new Promise((resolve, reject) => {
+            db.get(
+                'SELECT * FROM users WHERE username = ? OR email = ?',
+                [username, username],
+                (err, row) => {
+                    if (err) reject(err);
+                    resolve(row);
+                }
+            );
+        });
+
+        if (!user) {
+            return res.redirect('/?error=' + encodeURIComponent('Invalid username or password'));
         }
-        
-        if (user && bcrypt.compareSync(password, user.password)) {
-            req.session.user = {
-                id: user.id,
-                username: user.username,
-                role: user.role
-            };
-            
-            if (user.role === 'admin') {
+
+        const match = await bcrypt.compare(password, user.password);
+
+        if (!match) {
+            return res.redirect('/?error=' + encodeURIComponent('Invalid username or password'));
+        }
+
+        // Set user session
+        req.session.user = {
+            id: user.id,
+            username: user.username,
+            role: user.role
+        };
+
+        // Redirect based on role
+        switch (user.role) {
+            case 'admin':
                 res.redirect('/admin/dashboard');
-            } else {
+                break;
+            case 'trainer':
+                res.redirect('/trainer/dashboard');
+                break;
+            default:
                 res.redirect('/member/dashboard');
-            }
-        } else {
-            res.redirect('/');
         }
-    });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.redirect('/?error=' + encodeURIComponent('An error occurred during login'));
+    }
 });
 
 // Register route
-app.post('/register', (req, res) => {
+app.post('/register', async (req, res) => {
     const { newUsername, email, newPassword } = req.body;
-    const hashedPassword = bcrypt.hashSync(newPassword, 10);
-    
-    db.run('INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
-        [newUsername, email, hashedPassword, 'member'],
-        (err) => {
-            if (err) {
-                logger.error('Registration error:', err);
-                return res.redirect('/');
-            }
-            res.redirect('/');
+
+    try {
+        // Check if username or email already exists
+        const existingUser = await new Promise((resolve, reject) => {
+            db.get(
+                'SELECT * FROM users WHERE username = ? OR email = ?',
+                [newUsername, email],
+                (err, row) => {
+                    if (err) reject(err);
+                    resolve(row);
+                }
+            );
+        });
+
+        if (existingUser) {
+            return res.redirect('/?error=' + encodeURIComponent('Username or email already exists'));
         }
-    );
+
+        // Hash password and create user
+        const hashedPassword = bcrypt.hashSync(newPassword, 10);
+        
+        // Insert new user with member role
+        const result = await new Promise((resolve, reject) => {
+            db.run(
+                'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
+                [newUsername, email, hashedPassword, 'member'],
+                function(err) {
+                    if (err) reject(err);
+                    resolve(this);
+                }
+            );
+        });
+
+        // Get the newly created user
+        const newUser = await new Promise((resolve, reject) => {
+            db.get(
+                'SELECT * FROM users WHERE id = ?',
+                [result.lastID],
+                (err, row) => {
+                    if (err) reject(err);
+                    resolve(row);
+                }
+            );
+        });
+
+        // Set session and redirect to member dashboard
+        req.session.user = {
+            id: newUser.id,
+            username: newUser.username,
+            email: newUser.email,
+            role: 'member'
+        };
+
+        res.redirect('/member/dashboard');
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.redirect('/?error=' + encodeURIComponent('Registration failed'));
+    }
 });
 
 // Logout route
 app.post('/logout', (req, res) => {
-    req.session.destroy();
-    res.redirect('/');
+    req.session.destroy((err) => {
+        if (err) {
+            console.error('Error destroying session:', err);
+        }
+        res.redirect('/');
+    });
 });
 
-// Use admin routes
-app.use('/admin', adminRoutes);
+// Mount routes
+const adminRoutes = require('./routes/admin');
+const memberRoutes = require('./routes/member');
+const trainerRoutes = require('./routes/trainer');
 
-// Use member routes
+app.use('/admin', adminRoutes);
 app.use('/member', memberRoutes);
+app.use('/trainer', trainerRoutes);
 
 // Start server
-app.listen(port, () => {
-    console.log(`Server running at http://localhost:${port}`);
-    logger.info(`Server started on port ${port}`);
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });

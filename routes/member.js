@@ -6,11 +6,13 @@ const db = new sqlite3.Database('gym.db');
 
 // Middleware to check if user is member
 const isMember = (req, res, next) => {
-    if (req.session.user && req.session.user.role === 'member') {
-        next();
-    } else {
-        res.redirect('/login');
+    if (!req.session.user) {
+        return res.redirect('/?error=' + encodeURIComponent('Please login first'));
     }
+    if (req.session.user.role !== 'member') {
+        return res.redirect('/?error=' + encodeURIComponent('Access denied'));
+    }
+    next();
 };
 
 // Member dashboard
@@ -69,11 +71,10 @@ router.get('/dashboard', isMember, async (req, res) => {
             subscription,
             trainers,
             appointments,
-            qrCode,
-            csrfToken: req.csrfToken()
+            qrCode
         });
     } catch (error) {
-        console.error(error);
+        console.error('Dashboard error:', error);
         res.status(500).send('Internal Server Error');
     }
 });
@@ -99,20 +100,48 @@ router.post('/subscribe', isMember, (req, res) => {
 });
 
 // Book appointment
-router.post('/book-appointment', isMember, (req, res) => {
+router.post('/book-appointment', isMember, async (req, res) => {
     const { trainer_id, appointment_date } = req.body;
 
-    db.run(
-        'INSERT INTO appointments (user_id, trainer_id, appointment_date, status) VALUES (?, ?, ?, ?)',
-        [req.session.user.id, trainer_id, appointment_date, 'scheduled'],
-        (err) => {
-            if (err) {
-                console.error(err);
-                return res.status(500).json({ error: 'Failed to book appointment' });
-            }
-            res.redirect('/member/dashboard');
+    try {
+        // Check for active subscription
+        const subscription = await new Promise((resolve, reject) => {
+            db.get(
+                `SELECT * FROM subscriptions 
+                WHERE user_id = ? 
+                AND status = 'active' 
+                AND end_date >= date('now')
+                ORDER BY start_date DESC 
+                LIMIT 1`,
+                [req.session.user.id],
+                (err, row) => {
+                    if (err) reject(err);
+                    resolve(row);
+                }
+            );
+        });
+
+        if (!subscription) {
+            return res.redirect('/member/dashboard?error=' + encodeURIComponent('You need an active subscription to book training sessions'));
         }
-    );
+
+        // Book the appointment
+        await new Promise((resolve, reject) => {
+            db.run(
+                'INSERT INTO appointments (user_id, trainer_id, appointment_date, status) VALUES (?, ?, ?, ?)',
+                [req.session.user.id, trainer_id, appointment_date, 'scheduled'],
+                function(err) {
+                    if (err) reject(err);
+                    resolve(this.lastID);
+                }
+            );
+        });
+
+        res.redirect('/member/dashboard?success=' + encodeURIComponent('Training session booked successfully'));
+    } catch (error) {
+        console.error('Booking error:', error);
+        res.redirect('/member/dashboard?error=' + encodeURIComponent('Failed to book training session'));
+    }
 });
 
 // Cancel appointment
