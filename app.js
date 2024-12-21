@@ -5,6 +5,28 @@ const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('gym.db');
 const helmet = require('helmet');
+const winston = require('winston');
+
+// Configure logger
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+    ),
+    transports: [
+        new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
+        new winston.transports.File({ filename: 'logs/security.log', level: 'warn' }),
+        new winston.transports.File({ filename: 'logs/combined.log' })
+    ]
+});
+
+// Add console logging if not in production
+if (process.env.NODE_ENV !== 'production') {
+    logger.add(new winston.transports.Console({
+        format: winston.format.simple()
+    }));
+}
 
 const app = express();
 

@@ -3,6 +3,7 @@ const router = express.Router();
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('gym.db');
 const bcrypt = require('bcrypt');
+const logger = console; // Assuming console is used for logging
 
 // Middleware to check if user is admin
 const isAdmin = (req, res, next) => {
@@ -60,6 +61,39 @@ router.get('/dashboard', isAdmin, async (req, res) => {
         console.error('Error loading admin dashboard:', error);
         res.redirect('/?error=' + encodeURIComponent('Error loading dashboard'));
     }
+});
+
+// Admin login
+router.post('/login', (req, res) => {
+    const { username, password } = req.body;
+    
+    db.get('SELECT * FROM users WHERE username = ? AND role = "admin"', [username], (err, user) => {
+        if (err) {
+            logger.error('Database error during admin login:', { error: err.message, username });
+            return res.redirect('/?error=' + encodeURIComponent('Login failed'));
+        }
+        
+        if (!user) {
+            logger.warn('Failed admin login attempt:', { username, reason: 'User not found' });
+            return res.redirect('/?error=' + encodeURIComponent('Invalid credentials'));
+        }
+
+        bcrypt.compare(password, user.password, (err, match) => {
+            if (err) {
+                logger.error('Password comparison error:', { error: err.message, username });
+                return res.redirect('/?error=' + encodeURIComponent('Login failed'));
+            }
+
+            if (!match) {
+                logger.warn('Failed admin login attempt:', { username, reason: 'Invalid password' });
+                return res.redirect('/?error=' + encodeURIComponent('Invalid credentials'));
+            }
+
+            req.session.user = { id: user.id, username: user.username, role: 'admin' };
+            logger.info('Successful admin login:', { username });
+            res.redirect('/admin/dashboard');
+        });
+    });
 });
 
 // Delete member
