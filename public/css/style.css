@@ -1,100 +1,201 @@
-/* General Styles */
+/* Modern CSS Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
 body {
-    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    background: #f4f7f9;
+    color: #333;
 }
 
-/* Card Styles */
-.card {
-    border: none;
+/* Login Page Styles */
+.login-container {
+    max-width: 500px;
+    margin: 50px auto;
+    padding: 30px;
+    background: white;
     border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-.card-header {
-    padding: 1.25rem 1.5rem;
+.login-container h1 {
+    color: #2c3e50;
+    text-align: center;
+    margin-bottom: 10px;
+    font-size: 2.5em;
 }
 
-/* Table Styles */
-.table {
-    margin-bottom: 0;
+.login-container h2 {
+    color: #e74c3c;
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 1.5em;
 }
 
-.table th {
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.5px;
+.form-group {
+    margin-bottom: 20px;
 }
 
-.table td {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
-}
-
-/* Avatar Circle */
-.avatar-circle {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    font-size: 0.875rem;
-}
-
-/* Status Indicators */
-.status-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 6px;
-}
-
-.status-text {
-    font-size: 0.875rem;
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #2c3e50;
     font-weight: 500;
 }
 
-/* Custom Colors */
-.bg-primary {
-    background-color: #0d6efd !important;
+.form-group input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 16px;
+    transition: border-color 0.3s;
 }
 
-.bg-success {
-    background-color: #198754 !important;
+.form-group input:focus {
+    border-color: #3498db;
+    outline: none;
 }
 
-.bg-danger {
-    background-color: #dc3545 !important;
+button {
+    width: 100%;
+    padding: 12px;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s;
 }
 
-.bg-secondary {
-    background-color: #6c757d !important;
+button:hover {
+    background: #2980b9;
 }
 
-/* Delete Button */
-.btn-link {
-    text-decoration: none;
+.error {
+    background: #fee;
+    color: #e74c3c;
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    text-align: center;
 }
 
-.btn-link:hover {
-    text-decoration: underline;
+.info-box {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #3498db;
 }
 
-/* Navigation */
-.navbar {
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+.info-box h3 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+    font-size: 1.2em;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .table th, .table td {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-    
-    .status-text {
-        display: none;
-    }
+.info-box ul {
+    list-style-position: inside;
+    margin-bottom: 15px;
+}
+
+.info-box li {
+    margin-bottom: 5px;
+    color: #666;
+}
+
+/* Dashboard Styles */
+.dashboard-container {
+    max-width: 1200px;
+    margin: 30px auto;
+    padding: 20px;
+}
+
+header {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+}
+
+header h1 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+
+.message {
+    padding: 15px;
+    border-radius: 6px;
+    margin-top: 10px;
+    background: #d4edda;
+    color: #155724;
+}
+
+section {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+}
+
+section h2 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #eee;
+}
+
+.appointments-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.appointment-card {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #3498db;
+}
+
+.appointment-card h3 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+}
+
+.appointment-card p {
+    margin-bottom: 10px;
+    color: #666;
+}
+
+.appointment-card button {
+    background: #e74c3c;
+    margin-top: 10px;
+}
+
+.appointment-card button:hover {
+    background: #c0392b;
+}
+
+.logout-section {
+    text-align: right;
+    margin-top: 30px;
+}
+
+.logout-section button {
+    width: auto;
+    padding: 10px 20px;
+    background: #e74c3c;
+}
+
+.logout-section button:hover {
+    background: #c0392b;
 }

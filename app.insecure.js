@@ -1,40 +1,38 @@
 const express = require('express');
 const session = require('express-session');
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
+// Set environment variable for insecure database
+process.env.INSECURE = 'true';
+const db = require('./db/init');
+
 const app = express();
-const port = 3001; // Different port for insecure version
 
-// Import routes
-const adminRoutes = require('./routes/insecure/admin');
-const memberRoutes = require('./routes/member');
-
-// Database setup
-const db = new sqlite3.Database('gym.db');
+// Middleware
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static('public'));
 
 // VULNERABILITY: Weak session configuration
 app.use(session({
-    secret: '123456',
+    secret: 'insecure-secret',
     resave: true,
     saveUninitialized: true,
     cookie: { secure: false }
 }));
 
-// Middleware
-app.use(express.static('public'));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-
-// Set view engine
+// View engine setup
 app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
+app.set('views', [
+    path.join(__dirname, 'views'),
+    path.join(__dirname, 'views/insecure')
+]);
 
 // Routes
-app.use('/admin', adminRoutes);
-app.use('/member', memberRoutes);
+const memberRoutes = require('./routes/insecure/member');
+const adminRoutes = require('./routes/insecure/admin');
 
-// VULNERABILITY: No input validation in login
+// VULNERABILITY: No input validation or sanitization
 app.post('/login', (req, res) => {
     const { username, password } = req.body;
     
@@ -43,57 +41,74 @@ app.post('/login', (req, res) => {
     
     db.get(query, (err, user) => {
         if (err) {
-            return res.redirect('/?error=' + err.message);
+            return res.render('insecure/login', { error: err.message });
         }
-        
         if (user) {
-            // VULNERABILITY: Sensitive data exposure in session
+            req.session.userId = user.id;
             req.session.user = user;
-            
             if (user.role === 'admin') {
                 res.redirect('/admin/dashboard');
             } else {
                 res.redirect('/member/dashboard');
             }
         } else {
-            res.redirect('/?error=Invalid credentials');
+            res.render('insecure/login', { error: 'Invalid credentials' });
         }
     });
 });
 
-// VULNERABILITY: Reflected XSS
-app.get('/', (req, res) => {
-    // VULNERABILITY: Unescaped error message
-    const error = req.query.error;
-    res.render('login.insecure', { error });
-});
-
-// Database initialization
-db.serialize(() => {
-    // Create announcements table for Stored XSS
-    db.run(`CREATE TABLE IF NOT EXISTS announcements (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        content TEXT,
-        created_at DATETIME
-    )`);
-
-    // VULNERABILITY: Plaintext password storage
-    const defaultAdmin = {
-        username: 'admin',
-        password: 'admin123', // Plaintext password
-        email: 'admin@gym.com',
-        role: 'admin'
-    };
-
-    // VULNERABILITY: SQL Injection
-    const adminQuery = `INSERT OR IGNORE INTO users (username, email, password, role) 
-                       VALUES ('${defaultAdmin.username}', '${defaultAdmin.email}', 
-                               '${defaultAdmin.password}', '${defaultAdmin.role}')`;
+// VULNERABILITY: No password hashing, SQL Injection in registration
+app.post('/register', (req, res) => {
+    const { newUsername, email, newPassword } = req.body;
     
-    db.run(adminQuery);
+    // VULNERABILITY: SQL Injection
+    const query = `
+        INSERT INTO users (username, email, password, role)
+        VALUES ('${newUsername}', '${email}', '${newPassword}', 'member')
+    `;
+    
+    db.run(query, (err) => {
+        if (err) {
+            return res.render('insecure/login', { error: err.message });
+        }
+        // VULNERABILITY: Auto-login after registration without verification
+        const loginQuery = `SELECT * FROM users WHERE username = '${newUsername}'`;
+        db.get(loginQuery, (err, user) => {
+            if (user) {
+                req.session.userId = user.id;
+                req.session.user = user;
+                res.redirect('/member/dashboard');
+            } else {
+                res.render('insecure/login', { error: 'Registration successful but login failed' });
+            }
+        });
+    });
 });
 
-app.listen(port, () => {
-    console.log(`Insecure server running at http://localhost:${port}`);
+app.get('/login', (req, res) => {
+    res.render('insecure/login', { error: req.query.error });
+});
+
+app.get('/', (req, res) => {
+    res.redirect('/login');
+});
+
+// VULNERABILITY: No CSRF protection for logout
+app.get('/logout', (req, res) => {
+    req.session.destroy();
+    res.redirect('/login');
+});
+
+app.use('/member', memberRoutes);
+app.use('/admin', adminRoutes);
+
+// VULNERABILITY: Detailed error messages
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).send('Error: ' + err.stack);
+});
+
+const PORT = 3001;
+app.listen(PORT, () => {
+    console.log(`Insecure app running on port ${PORT}`);
 });

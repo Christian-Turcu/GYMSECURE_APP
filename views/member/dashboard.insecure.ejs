@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Member Dashboard - Insecure</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header>
+            <h1>Welcome, <%= user.username %></h1>
+            <!-- VULNERABILITY: XSS through unescaped message -->
+            <% if (typeof message !== 'undefined') { %>
+                <div class="message"><%- message %></div>
+            <% } %>
+        </header>
+
+        <section class="subscription-info">
+            <h2>Your Subscription</h2>
+            <% if (subscription) { %>
+                <p>Status: <%= subscription.status %></p>
+                <p>Expires: <%= subscription.expiry_date %></p>
+            <% } else { %>
+                <p>No active subscription found.</p>
+            <% } %>
+        </section>
+
+        <section class="appointments">
+            <h2>Your Appointments</h2>
+            <div class="appointments-list">
+                <% if (appointments && appointments.length > 0) { %>
+                    <% appointments.forEach(appointment => { %>
+                        <div class="appointment-card">
+                            <!-- VULNERABILITY: XSS through unescaped trainer name -->
+                            <h3>Session with <%- appointment.trainer_name %></h3>
+                            <p>Date: <%= appointment.appointment_date %></p>
+                            <p>Status: <%= appointment.status %></p>
+                            <form action="/member/cancel-appointment/<%= appointment.id %>" method="POST">
+                                <button type="submit">Cancel Appointment</button>
+                            </form>
+                        </div>
+                    <% }); %>
+                <% } else { %>
+                    <p>No appointments scheduled.</p>
+                <% } %>
+            </div>
+        </section>
+
+        <section class="book-appointment">
+            <h2>Book New Appointment</h2>
+            <form action="/member/book-appointment" method="POST">
+                <div class="form-group">
+                    <label for="trainerId">Select Trainer:</label>
+                    <select name="trainerId" required>
+                        <% trainers.forEach(trainer => { %>
+                            <!-- VULNERABILITY: XSS through unescaped trainer name -->
+                            <option value="<%= trainer.id %>"><%- trainer.name %></option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="date">Select Date:</label>
+                    <input type="datetime-local" name="date" required>
+                </div>
+                <button type="submit">Book Appointment</button>
+            </form>
+        </section>
+
+        <div class="logout-section">
+            <form action="/logout" method="POST">
+                <button type="submit">Logout</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
