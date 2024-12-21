@@ -72,6 +72,102 @@ db.serialize(() => {
     db.run(`INSERT OR IGNORE INTO users (username, email, password, role) 
             VALUES (?, ?, ?, ?)`, 
             ['admin', 'admin@gym.com', adminPassword, 'admin']);
+    
+    // Insert sample trainers
+    db.run(`INSERT OR IGNORE INTO trainers (name, specialization, availability) 
+            VALUES (?, ?, ?)`, 
+            ['John Doe', 'Personal Training', 'Monday to Friday, 9am to 5pm']);
+    db.run(`INSERT OR IGNORE INTO trainers (name, specialization, availability) 
+            VALUES (?, ?, ?)`, 
+            ['Jane Smith', 'Yoga', 'Monday to Friday, 9am to 5pm']);
+    db.run(`INSERT OR IGNORE INTO trainers (name, specialization, availability) 
+            VALUES (?, ?, ?)`, 
+            ['Mike Jones', 'Pilates', 'Monday to Friday, 9am to 5pm']);
+    
+    // Insert sample appointments after trainers are created
+    setTimeout(() => {
+        console.log('Creating sample appointments for all trainers...');
+        
+        // Get all trainers
+        db.all('SELECT t.id as trainer_id, t.name, u.id as user_id, u.email FROM trainers t JOIN users u ON t.user_id = u.id', 
+            [], 
+            (err, trainers) => {
+                if (err || !trainers) {
+                    console.error('Error getting trainers for appointments:', err);
+                    return;
+                }
+
+                // First, clear existing appointments
+                db.run('DELETE FROM appointments', [], (err) => {
+                    if (err) {
+                        console.error('Error clearing appointments:', err);
+                        return;
+                    }
+
+                    // Create test members if they don't exist
+                    const testMembers = [
+                        { username: 'john_doe', email: 'john@gym.com', name: 'John Doe' },
+                        { username: 'jane_smith', email: 'jane@gym.com', name: 'Jane Smith' },
+                        { username: 'mike_jones', email: 'mike@gym.com', name: 'Mike Jones' }
+                    ];
+
+                    // Create test members
+                    testMembers.forEach(member => {
+                        const memberPassword = bcrypt.hashSync('member123', 10);
+                        db.run(`INSERT OR IGNORE INTO users (username, email, password, role) 
+                                VALUES (?, ?, ?, ?)`,
+                                [member.username, member.email, memberPassword, 'member']);
+                    });
+
+                    // Wait a bit for members to be created
+                    setTimeout(() => {
+                        // Get all test members
+                        db.all('SELECT id, email FROM users WHERE role = "member"', [], (err, members) => {
+                            if (err || !members) {
+                                console.error('Error getting members for appointments:', err);
+                                return;
+                            }
+
+                            // For each trainer, create just 2 appointments
+                            trainers.forEach((trainer, trainerIndex) => {
+                                // Create only 2 appointments per trainer
+                                const appointments = [
+                                    {
+                                        days: trainerIndex + 1, // Spread appointments across different days
+                                        hour: 10, // Morning appointment
+                                        status: 'scheduled'
+                                    },
+                                    {
+                                        days: trainerIndex + 1,
+                                        hour: 14, // Afternoon appointment
+                                        status: 'scheduled'
+                                    }
+                                ];
+
+                                appointments.forEach((appointment, index) => {
+                                    // Rotate through members for different appointments
+                                    const member = members[index % members.length];
+                                    const appointmentDate = new Date();
+                                    appointmentDate.setDate(appointmentDate.getDate() + appointment.days);
+                                    appointmentDate.setHours(appointment.hour, 0, 0);
+
+                                    db.run(`INSERT INTO appointments (user_id, trainer_id, appointment_date, status) 
+                                            VALUES (?, ?, ?, ?)`,
+                                            [member.id, trainer.trainer_id, appointmentDate.toISOString(), appointment.status],
+                                            function(err) {
+                                                if (err) {
+                                                    console.error('Error creating appointment:', err);
+                                                } else {
+                                                    console.log(`Created ${appointment.status} appointment for trainer ${trainer.name} with member ${member.email} at ${appointmentDate}`);
+                                                }
+                                            });
+                                });
+                            });
+                        });
+                    }, 500);
+                });
+            });
+    }, 1000); // Wait 1 second for trainers to be created first
 });
 
 // Routes
