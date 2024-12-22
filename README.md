@@ -37,7 +37,10 @@ A demonstration of secure vs insecure web application implementations for managi
 
 ### Insecure Version 
 
-Demonstrates common vulnerabilities
+### High Risks:
+SQL Injection - SQLite
+Path Traversal
+User Agent Fuzze
 
 - You can login as Name: admin Pass: admin123
 - you can also login as Name: admin'-- Pass: anything
