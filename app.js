@@ -3,9 +3,9 @@ const session = require('express-session');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('gym.db');
 const helmet = require('helmet');
 const winston = require('winston');
+const rateLimit = require('express-rate-limit');
 
 // Configure logger
 const logger = winston.createLogger({
@@ -30,6 +30,18 @@ if (process.env.NODE_ENV !== 'production') {
 
 const app = express();
 
+// Rate limiting
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // 5 attempts
+    message: { error: 'Too many login attempts, please try again later' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+        res.redirect('/login?error=' + encodeURIComponent('Too many login attempts, please try again later'));
+    }
+});
+
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -39,14 +51,59 @@ app.use(express.static('public'));
 app.use(session({
     secret: 'your-secret-key',
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
 }));
 
-// Set view engine
+// Set view engine and views directory
 app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
 
-// Security middleware
-app.use(helmet());
+// Security middleware with test-friendly config
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https:", "http:"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https:", "http:"],
+            imgSrc: ["'self'", "data:", "https:", "http:"],
+            connectSrc: ["'self'"],
+            fontSrc: ["'self'", "https:", "http:", "data:"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"]
+        }
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: false
+}));
+
+// Additional security headers
+app.use((req, res, next) => {
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    logger.error('Error:', err);
+    res.status(500).render('error', { 
+        error: process.env.NODE_ENV === 'production' 
+            ? 'An error occurred' 
+            : err.message 
+    });
+});
+
+// Database configuration
+const dbPath = process.env.NODE_ENV === 'test' ? 'test.db' : 'gym.db';
+const db = new sqlite3.Database(dbPath);
 
 // Database initialization
 db.serialize(() => {
@@ -194,19 +251,34 @@ db.serialize(() => {
 
 // Routes
 app.get('/', (req, res) => {
-    res.render('login', { error: req.query.error });
+    res.redirect('/login');
+});
+
+app.get('/login', (req, res) => {
+    res.render('login', { 
+        error: req.query.error,
+        success: req.query.success
+    });
 });
 
 // Login route
-app.post('/login', async (req, res) => {
+app.post('/login', loginLimiter, async (req, res) => {
     const { username, password } = req.body;
 
     try {
+        // Input validation
+        if (!username || !password) {
+            return res.redirect('/login?error=' + encodeURIComponent('Username and password are required'));
+        }
+
+        // Sanitize input
+        const sanitizedUsername = username.replace(/[^a-zA-Z0-9@._-]/g, '');
+
         // Check if input is email or username
         const user = await new Promise((resolve, reject) => {
             db.get(
                 'SELECT * FROM users WHERE username = ? OR email = ?',
-                [username, username],
+                [sanitizedUsername, sanitizedUsername],
                 (err, row) => {
                     if (err) reject(err);
                     resolve(row);
@@ -215,13 +287,13 @@ app.post('/login', async (req, res) => {
         });
 
         if (!user) {
-            return res.redirect('/?error=' + encodeURIComponent('Invalid username or password'));
+            return res.redirect('/login?error=' + encodeURIComponent('Invalid username or password'));
         }
 
         const match = await bcrypt.compare(password, user.password);
 
         if (!match) {
-            return res.redirect('/?error=' + encodeURIComponent('Invalid username or password'));
+            return res.redirect('/login?error=' + encodeURIComponent('Invalid username or password'));
         }
 
         // Set user session
@@ -243,21 +315,42 @@ app.post('/login', async (req, res) => {
                 res.redirect('/member/dashboard');
         }
     } catch (error) {
-        console.error('Login error:', error);
-        res.redirect('/?error=' + encodeURIComponent('An error occurred during login'));
+        logger.error('Login error:', error);
+        res.redirect('/login?error=' + encodeURIComponent('An error occurred during login'));
     }
 });
 
-// Register route
+// Registration route
 app.post('/register', async (req, res) => {
     const { newUsername, email, newPassword } = req.body;
 
     try {
+        // Input validation
+        if (!newUsername || !email || !newPassword) {
+            return res.redirect('/login?error=' + encodeURIComponent('All fields are required'));
+        }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.redirect('/login?error=' + encodeURIComponent('Invalid email format'));
+        }
+
+        // Password strength validation
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+        if (!passwordRegex.test(newPassword)) {
+            return res.redirect('/login?error=' + encodeURIComponent('Password must be at least 8 characters long and contain uppercase, lowercase, number and special character'));
+        }
+
+        // Sanitize input
+        const sanitizedUsername = newUsername.replace(/[^a-zA-Z0-9_-]/g, '');
+        const sanitizedEmail = email.toLowerCase().trim();
+
         // Check if username or email already exists
         const existingUser = await new Promise((resolve, reject) => {
             db.get(
                 'SELECT * FROM users WHERE username = ? OR email = ?',
-                [newUsername, email],
+                [sanitizedUsername, sanitizedEmail],
                 (err, row) => {
                     if (err) reject(err);
                     resolve(row);
@@ -266,48 +359,32 @@ app.post('/register', async (req, res) => {
         });
 
         if (existingUser) {
-            return res.redirect('/?error=' + encodeURIComponent('Username or email already exists'));
+            if (existingUser.email === sanitizedEmail) {
+                return res.redirect('/login?error=' + encodeURIComponent('Email already exists'));
+            }
+            return res.redirect('/login?error=' + encodeURIComponent('Username already exists'));
         }
 
-        // Hash password and create user
-        const hashedPassword = bcrypt.hashSync(newPassword, 10);
-        
-        // Insert new user with member role
-        const result = await new Promise((resolve, reject) => {
+        // Hash password
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        // Insert new user
+        await new Promise((resolve, reject) => {
             db.run(
                 'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
-                [newUsername, email, hashedPassword, 'member'],
+                [sanitizedUsername, sanitizedEmail, hashedPassword, 'member'],
                 function(err) {
                     if (err) reject(err);
-                    resolve(this);
+                    resolve(this.lastID);
                 }
             );
         });
 
-        // Get the newly created user
-        const newUser = await new Promise((resolve, reject) => {
-            db.get(
-                'SELECT * FROM users WHERE id = ?',
-                [result.lastID],
-                (err, row) => {
-                    if (err) reject(err);
-                    resolve(row);
-                }
-            );
-        });
-
-        // Set session and redirect to member dashboard
-        req.session.user = {
-            id: newUser.id,
-            username: newUser.username,
-            email: newUser.email,
-            role: 'member'
-        };
-
-        res.redirect('/member/dashboard');
+        // Redirect with success message
+        res.redirect('/login?success=' + encodeURIComponent('Registration successful! Please login.'));
     } catch (error) {
-        console.error('Registration error:', error);
-        res.redirect('/?error=' + encodeURIComponent('Registration failed'));
+        logger.error('Registration error:', error);
+        res.redirect('/login?error=' + encodeURIComponent('Registration failed'));
     }
 });
 
@@ -317,7 +394,7 @@ app.post('/logout', (req, res) => {
         if (err) {
             console.error('Error destroying session:', err);
         }
-        res.redirect('/');
+        res.redirect('/login');
     });
 });
 
@@ -331,7 +408,7 @@ app.use('/member', memberRoutes);
 app.use('/trainer', trainerRoutes);
 
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = 3001;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
