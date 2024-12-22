@@ -108,7 +108,7 @@ app.use((err, req, res, next) => {
     res.status(500).send('Error: ' + err.stack);
 });
 
-const PORT = 3001;
+const PORT = 3002;
 app.listen(PORT, () => {
-    console.log(`Insecure app running on port ${PORT}`);
+    console.log(`Insecure server running on port ${PORT}`);
 });

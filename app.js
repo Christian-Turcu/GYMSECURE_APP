@@ -21,7 +21,7 @@ const logger = winston.createLogger({
     ]
 });
 
-// Add console logging if not in production
+// Add console 
 if (process.env.NODE_ENV !== 'production') {
     logger.add(new winston.transports.Console({
         format: winston.format.simple()
@@ -33,7 +33,7 @@ const app = express();
 // Rate limiting
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // 5 attempts
+    max: 1000, // 1000 attempts
     message: { error: 'Too many login attempts, please try again later' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -55,7 +55,7 @@ app.use(session({
     cookie: {
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        maxAge: 2 * 60 * 60 * 1000 // 2 hours
     }
 }));
 
